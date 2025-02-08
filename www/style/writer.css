@@ -1,0 +1,10 @@
+stroke-order {
+  background-color: white;
+}
+
+.stroke-order-preview {
+  display: flex;
+  overflow: hidden;
+  flex-direction: row;
+  justify-content: end;
+}

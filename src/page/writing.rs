@@ -14,8 +14,8 @@ pub fn add_routes(router: Router) -> Router {
         .route("/writing", routing::get(writing_root))
         .route("/writing/preview", routing::get(preview))
         .nest_service(
-            "/writing/stroke-order",
-            ServeDir::new(config.stroke_order_svgs.as_str()),
+            "/writing/stroke-order-data",
+            ServeDir::new(config.stroke_order_data.as_str()),
         )
 }
 
@@ -47,16 +47,23 @@ async fn preview(
         .map_err(|e| throw_500(e.to_string()))?;
 
     let characters = search.chars().filter(|c| {
-        let i: u32 = (*c).into();
-        let image_name = format!("{i}.svg");
         let mut path = PathBuf::new();
-        path.push(&config.stroke_order_svgs);
-        path.push(&image_name);
+        path.push(&config.stroke_order_data);
+        path.push(format!("{c}.json"));
+        println!("{:?}", path);
         path.exists()
     });
 
     let image_tags = characters
-        .map(|ch| format!(r##"<stroke-order character="{}"></stroke-order>"##, ch))
+        .map(|ch| {
+            format!(
+                r##"<stroke-order
+                character="{}"
+                data-path="/writing/stroke-order-data"
+            ></stroke-order>"##,
+                ch,
+            )
+        })
         .fold(String::new(), |mut p, c| {
             p.push_str(&c);
             p.push_str("\n");

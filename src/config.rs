@@ -4,7 +4,7 @@ use serde::Deserialize;
 
 #[derive(Deserialize)]
 pub struct Config {
-    pub stroke_order_svgs: String,
+    pub stroke_order_data: String,
 }
 
 static CONFIG: LazyLock<Result<Config, String>> = LazyLock::new(|| {

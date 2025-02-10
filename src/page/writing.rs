@@ -44,7 +44,8 @@ async fn preview(
 
     let config = config::load_config()
         .as_ref()
-        .map_err(|e| throw_500(e.to_string()))?;
+        .map_err(Clone::clone)
+        .map_err(throw_500)?;
 
     let characters = search.chars().filter(|c| {
         let mut path = PathBuf::new();

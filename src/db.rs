@@ -138,6 +138,49 @@ insert into word_def (dict, simplified, traditional, data)
         tx.commit().map_err(string_error)?;
         Ok(())
     }
+
+    pub fn words_starting_with(
+        &self,
+        prefix: &str,
+    ) -> Result<Vec<(Id<WordDef>, Id<Dict>, WordDef)>, String> {
+        let sql = r#"
+select rowid, dict, simplified, traditional, data
+  from word_def
+  where simplified like ?1 or traditional like ?1"#;
+
+        // This really sucks, need to escape
+        let like_query = format!("{}%", prefix);
+
+        let rows = self
+            .conn
+            .prepare(sql)
+            .map_err(string_error)?
+            .query_map([&like_query], |row| {
+                let (pinyin, defs): (Vec<String>, Vec<String>) =
+                    serde_json::from_str(row.get::<_, String>(4)?.as_str()).map_err(|e| {
+                        rusqlite::Error::FromSqlConversionFailure(
+                            4,
+                            rusqlite::types::Type::Text,
+                            e.into(),
+                        )
+                    })?;
+
+                Ok((
+                    row.get(0).map(Id::<WordDef>::new)?,
+                    row.get(1).map(Id::<Dict>::new)?,
+                    WordDef {
+                        simplified: row.get(2)?,
+                        traditional: row.get(3)?,
+                        pinyin,
+                        defs,
+                    },
+                ))
+            })
+            .map_err(string_error)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(string_error)?;
+        Ok(rows)
+    }
 }
 
 const SQL_SCHEMA: [&str; 3] = [

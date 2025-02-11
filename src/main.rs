@@ -12,6 +12,10 @@ async fn main() {
     let db = Db::open().unwrap();
     println!("{}", db.get_document("general").unwrap());
 
+    for (a, b, c) in db.words_starting_with("你").unwrap() {
+        println!("{} {} {:?}", a, b, c);
+    }
+
     let app = page::import::add_routes(page::writing::add_routes(Router::new()))
         .nest_service("/www", ServeDir::new("www"));
 

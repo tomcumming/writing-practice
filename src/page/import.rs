@@ -1,7 +1,7 @@
 use axum::{
     extract::{DefaultBodyLimit, Multipart},
     http::Response,
-    response::Html,
+    response::{Html, Redirect},
     routing, Router,
 };
 
@@ -32,7 +32,7 @@ async fn import_root() -> Html<String> {
     )
 }
 
-async fn upload_cccedict(mut multipart: Multipart) -> Result<String, Response<String>> {
+async fn upload_cccedict(mut multipart: Multipart) -> Result<Redirect, Response<String>> {
     let field = multipart.next_field().await.unwrap().unwrap();
 
     if field.name() != Some("cc-cedict") {
@@ -45,17 +45,21 @@ async fn upload_cccedict(mut multipart: Multipart) -> Result<String, Response<St
         Err(throw_500("Expected one field!".to_string()))?
     }
 
-    let lines_res: Result<Vec<db::WordDef>, String> = contents
+    let defs = contents
         .lines()
         .enumerate()
         .skip_while(|(_idx, line)| line.starts_with("#"))
         .map(|(idx, line)| {
             parse_cc_cedict_line(line).map_err(|e| format!("On line {}: {}", idx, e))
         })
-        .collect();
-    let lines = lines_res.map_err(throw_500)?;
+        .collect::<Result<Vec<db::WordDef>, String>>()
+        .map_err(throw_500)?;
 
-    Ok(format!("{:?}", lines[5000]))
+    let mut db = db::Db::open().map_err(throw_500)?;
+    db.replace_dictionary("cc-cedict", defs.into_iter())
+        .map_err(throw_500)?;
+
+    Ok(Redirect::to("/"))
 }
 
 fn parse_cc_cedict_line(line: &str) -> Result<db::WordDef, String> {

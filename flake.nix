@@ -14,6 +14,8 @@
           pkgs.rustc
           pkgs.rust-analyzer
           pkgs.rustfmt
+
+          pkgs.sqlite
         ];
       };
       formatter."${system}" = pkgs.nixpkgs-fmt;

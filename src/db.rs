@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 
-use rusqlite::{Connection, OpenFlags};
+use rusqlite::{Connection, OpenFlags, ToSql};
 
 #[derive(PartialEq, Eq, PartialOrd, Ord)]
 pub struct Id<T> {
@@ -24,6 +24,12 @@ impl<T> Id<T> {
 
     pub fn get(self) -> u64 {
         self.id
+    }
+}
+
+impl<T> ToSql for Id<T> {
+    fn to_sql(&self) -> rusqlite::Result<rusqlite::types::ToSqlOutput<'_>> {
+        self.id.to_sql()
     }
 }
 
@@ -54,10 +60,12 @@ impl Db {
         )
         .map_err(|_| "Could not open writer.sqlite")?;
 
-        conn.prepare(SQL_SCHEMA)
-            .map_err(string_error)?
-            .execute([])
-            .map_err(string_error)?;
+        for stmt in SQL_SCHEMA {
+            conn.prepare(stmt)
+                .map_err(string_error)?
+                .execute([])
+                .map_err(string_error)?;
+        }
 
         Ok(Db { conn })
     }
@@ -92,25 +100,60 @@ insert into dict (name) values(?1)
             .execute([name])
             .map_err(string_error)?;
         self.conn
-            .prepare(r#"select rowid from document where name = ?1"#)
+            .prepare(r#"select rowid from dict where name = ?1"#)
             .map_err(string_error)?
             .query_row([name], |row| row.get(0).map(Id::new))
             .map_err(string_error)
     }
+
+    pub fn replace_dictionary(
+        &mut self,
+        name: &str,
+        defs: impl Iterator<Item = WordDef>,
+    ) -> Result<(), String> {
+        let id = self.get_dict(name)?;
+        let sql_delete = r#"delete from word_def where dict = ?1"#;
+        self.conn
+            .prepare(sql_delete)
+            .map_err(string_error)?
+            .execute([&id])
+            .map_err(string_error)?;
+
+        let tx = self.conn.transaction().map_err(string_error)?;
+
+        for def in defs {
+            let json = serde_json::to_value([def.pinyin, def.defs]).map_err(string_error)?;
+            let json_str = serde_json::to_string(&json).map_err(string_error)?;
+
+            let sql_insert = r#"
+insert into word_def (dict, simplified, traditional, data)
+    values (?1, ?2, ?3, ?4)"#;
+
+            tx.prepare(sql_insert)
+                .map_err(string_error)?
+                .execute((&id, def.simplified, def.traditional, json_str))
+                .map_err(string_error)?;
+        }
+
+        tx.commit().map_err(string_error)?;
+        Ok(())
+    }
 }
 
-const SQL_SCHEMA: &str = r##"
+const SQL_SCHEMA: [&str; 3] = [
+    r#"
 create table if not exists document (
   name text not null unique
-) strict;
-
+) strict;"#,
+    r#"
 create table if not exists dict (
   name text not null unique
-) strict;
-
-create table if not exists word_def {
+) strict;"#,
+    r#"
+create table if not exists word_def (
+    dict integer not null,
     simplified text not null,
     traditional text not null,
     data text not null
-}
-"##;
+) strict;"#,
+];
